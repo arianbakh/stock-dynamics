@@ -13,9 +13,8 @@ from settings import DATA_DIR
 
 AUTOCOMPLETE_URL = 'http://www.fipiran.com/DataService/AutoCompleteindex'
 EXPORT_URL = 'http://www.fipiran.com/DataService/Exportindex'
-START_DATE = 13800101  # YYYYMMDD Solar Hijri calendar
-END_DATE = 14000101  # YYYYMMDD Solar Hijri calendar
-TIME_FRAMES = 100
+START_DATE = 13980101  # YYYYMMDD Solar Hijri calendar
+END_DATE = 13990101  # YYYYMMDD Solar Hijri calendar
 
 
 class IranStock:
@@ -23,16 +22,19 @@ class IranStock:
         self._instrument_id_to_node_index = {}
         self._instrument_ids = []
         self._names = []
-        self._get_stock_indices()
         self._date_to_time_frame_index = {}
         self._dates = []
         self._raw_data = None
         self._get_raw_data()
         self._fill_raw_data_empty_entries()
-        self.networks = []
-        self._create_networks()
+        self._delete_static_columns()
+        self.network = None
+        self._create_network()
 
-    def _get_stock_indices(self):
+    @staticmethod
+    def _get_stock_indices():
+        all_instrument_ids = []
+        all_names = []
         cached_path = os.path.join(DATA_DIR, 'iran_stock_indices.json')
         if os.path.exists(cached_path):
             with open(cached_path, 'r') as cached_file:
@@ -48,22 +50,23 @@ class IranStock:
             else:
                 response_json = []
 
-        counter = 0
         for item in response_json:
             name = item['LVal30']
             if name[0].isdigit():
                 instrument_id = item['InstrumentID']
-                self._instrument_id_to_node_index[instrument_id] = counter
-                counter += 1
-                self._instrument_ids.append(instrument_id)
-                self._names.append(name)
+                all_instrument_ids.append(instrument_id)
+                all_names.append(name)
+
+        return all_instrument_ids, all_names
 
     def _get_raw_data(self):
         dates = set()
         entries = []
-        for i, instrument_id in enumerate(self._instrument_ids):
+        all_instrument_ids, all_names = self._get_stock_indices()
+        node_counter = 0
+        for i, instrument_id in enumerate(all_instrument_ids):
             # progress bar
-            sys.stdout.write('\rExcel Files [%d/%d]' % (i + 1, len(self._instrument_ids)))
+            sys.stdout.write('\rExcel Files [%d/%d]' % (i + 1, len(all_instrument_ids)))
             sys.stdout.flush()
 
             cached_path = os.path.join(DATA_DIR, instrument_id)
@@ -91,6 +94,10 @@ class IranStock:
                             dates.add(date)
                             amount = columns[2].string.strip()
                             entries.append((date, instrument_id, amount))
+                self._instrument_ids.append(instrument_id)
+                self._instrument_id_to_node_index[instrument_id] = node_counter
+                node_counter += 1
+                self._names.append(all_names[i])
         print()  # newline
 
         self._dates = sorted(dates)
@@ -115,29 +122,41 @@ class IranStock:
                 else:
                     previous_value = self._raw_data[row_index, column_index]
 
-    def _create_networks(self):
-        number_of_networks = int(2 * self._raw_data.shape[0] / TIME_FRAMES) + 1
-        for i in range(number_of_networks):
-            # progress bar
-            sys.stdout.write('\rNetworks [%d/%d]' % (i + 1, number_of_networks))
-            sys.stdout.flush()
+    @staticmethod
+    def _subtract(x):
+        normalized_columns = []
+        for column_index in range(x.shape[1]):
+            column = x[:, column_index]
+            normalized_column = column - column[0]
+            normalized_columns.append(normalized_column)
+        normalized_x = np.column_stack(normalized_columns)
+        return normalized_x
 
-            start_index = i * int(TIME_FRAMES / 2)
-            end_index = start_index + TIME_FRAMES
-            x = self._raw_data[start_index:end_index]
-            time_frame_labels = self._dates[start_index:end_index]
-            node_labels = self._names
-            self.networks.append(Network(x, time_frame_labels, node_labels))
-        print()  # newline
+    def _delete_static_columns(self):
+        normalized_x = self._subtract(self._raw_data)
+        mask = (normalized_x == 0).all(0)
+        column_indices = np.where(mask)[0]
+        new_names = []
+        new_instrument_ids = []
+        for i in range(len(self._names)):
+            name = self._names[i]
+            instrument_id = self._instrument_ids[i]
+            if i not in column_indices:
+                new_names.append(name)
+                new_instrument_ids.append(instrument_id)
+        self._raw_data = self._raw_data[:, ~mask]
+
+    def _create_network(self):
+        self.network = Network(self._raw_data, self._dates, self._instrument_ids)
 
 
-def get_iran_stock_networks(recreate=False):
-    cached_path = os.path.join(DATA_DIR, 'iran_stock_networks.p')
+def get_iran_stock_network(recreate=False):
+    cached_path = os.path.join(DATA_DIR, 'iran_stock_network.p')
     if not recreate and os.path.exists(cached_path):
         with open(cached_path, 'rb') as cached_file:
-            networks = pickle.load(cached_file)
+            network = pickle.load(cached_file)
     else:
-        networks = IranStock().networks
+        network = IranStock().network
         with open(cached_path, 'wb') as cached_file:
-            pickle.dump(networks, cached_file)
-    return networks
+            pickle.dump(network, cached_file)
+    return network
