@@ -147,7 +147,10 @@ class IranStock:
         self._raw_data = self._raw_data[:, ~mask]
 
     def _create_network(self):
-        self.network = Network(self._raw_data, self._dates, self._instrument_ids)
+        node_labels = []
+        for i in range(len(self._instrument_ids)):
+            node_labels.append(self._instrument_ids[i] + '_' + self._names[i])
+        self.network = Network(self._raw_data, self._dates, node_labels)
 
 
 def get_iran_stock_network(recreate=False):
