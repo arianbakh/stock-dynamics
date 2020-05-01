@@ -22,8 +22,8 @@ sns.set()
 
 # Algorithm Settings
 RSI_PERIOD = 14
-CV_PERCENT = 0.2
-TEST_PERCENT = 0.2
+CV_PERCENT = 0.1
+TEST_PERCENT = 0.15
 FOURIER_HARMONICS = 10
 SINDY_ITERATIONS = 10
 CANDIDATE_LAMBDAS_RSI = [10 ** i for i in range(-9, -1)]  # empirical
@@ -131,21 +131,12 @@ def _get_theta(x):  # empirical
     time_frames = x.shape[0] - 1
 
     x_vectors = [x[:time_frames, i] for i in range(x.shape[1])]
-    sin1_vectors = [np.sin(x[:time_frames, i]) for i in range(x.shape[1])]
-    sin2_vectors = [np.sin(x[:time_frames, i] * 2) for i in range(x.shape[1])]
-    sin4_vectors = [np.sin(x[:time_frames, i] * 4) for i in range(x.shape[1])]
-    sin8_vectors = [np.sin(x[:time_frames, i] * 8) for i in range(x.shape[1])]
-    column_list = [np.ones(time_frames)] + x_vectors + sin1_vectors + sin2_vectors + sin4_vectors + sin8_vectors
-    for subset in itertools.combinations(sin1_vectors, 2):
-        column_list.append(subset[0] * subset[1])
-    for subset in itertools.combinations(sin2_vectors, 2):
-        column_list.append(subset[0] * subset[1])
-    for subset in itertools.combinations(sin4_vectors, 2):
-        column_list.append(subset[0] * subset[1])
-    for subset in itertools.combinations(sin8_vectors, 2):
-        column_list.append(subset[0] * subset[1])
-    for subset in itertools.product(sin1_vectors, sin2_vectors):
-        column_list.append(subset[0] * subset[1])
+    column_list = [np.ones(time_frames)] + x_vectors
+    for coefficient in [1] + list(range(2, 10, 2)):
+        sin_vectors = [np.sin(x[:time_frames, i] * coefficient) for i in range(x.shape[1])]
+        column_list += sin_vectors
+        for subset in itertools.combinations(sin_vectors, 2):
+            column_list.append(subset[0] * subset[1])
 
     theta = np.column_stack(column_list)
     return theta
@@ -166,12 +157,11 @@ def _single_node_sindy(x_dot_i, theta, candidate_lambda):
 
 
 def _optimum_sindy(x_dot, theta, candidate_lambdas):
-    cv_start_index = int(x_dot.shape[0] * (1 - CV_PERCENT) / 2)
-    cv_end_index = int(x_dot.shape[0] * (1 + CV_PERCENT) / 2)
-    x_dot_train = np.concatenate((x_dot[:cv_start_index], x_dot[cv_end_index:]))
-    x_dot_cv = x_dot[cv_start_index:cv_end_index]
-    theta_train = np.concatenate((theta[:cv_start_index], theta[cv_end_index:]))
-    theta_cv = theta[cv_start_index:cv_end_index]
+    cv_index = int(x_dot.shape[0] * (1 - CV_PERCENT))
+    x_dot_train = x_dot[:cv_index]
+    x_dot_cv = x_dot[cv_index:]
+    theta_train = theta[:cv_index]
+    theta_cv = theta[cv_index:]
 
     xi = np.zeros((x_dot_train.shape[1], theta_train.shape[1]))
     for i in range(x_dot_train.shape[1]):
@@ -262,6 +252,7 @@ def _create_indicator_time_series(indicator, indicator_name, node_labels, candid
 
     print('Creating SINDy predictions...')
     xi_sindy = _optimum_sindy(x_dot_train, theta_train, candidate_lambdas_indicator)
+
     normalized_indicator_hat_sindy = np.copy(normalized_indicator)
     for time_frame in range(test_index, indicator.shape[0]):
         theta_hat_sindy = _get_theta(normalized_indicator_hat_sindy[time_frame - 1:time_frame + 1])
