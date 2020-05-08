@@ -22,12 +22,20 @@ sns.set()
 
 # Algorithm Settings
 RSI_PERIOD = 14
-CV_PERCENT = 0.1
-TEST_PERCENT = 0.15
+CV_DAYS = 23
+TEST_DAYS = 38
 FOURIER_HARMONICS = 10
 SINDY_ITERATIONS = 10
 CANDIDATE_LAMBDAS_RSI = [10 ** i for i in range(-9, -1)]  # empirical
 CANDIDATE_LAMBDAS_SRSI = list(np.arange(0.001, 0.011, 0.001))  # empirical
+
+
+def _simple_moving_average(x, n):
+    s = np.zeros(x.shape)
+    s[:n - 1] = x[:n - 1]  # this is automatically deep copy
+    for i in range(n - 1, s.shape[0]):
+        s[i] = np.mean(x[i - (n - 1):i + 1], axis=0)
+    return s
 
 
 def _exponential_moving_average(x, n):
@@ -132,11 +140,9 @@ def _get_theta(x):  # empirical
 
     x_vectors = [x[:time_frames, i] for i in range(x.shape[1])]
     column_list = [np.ones(time_frames)] + x_vectors
-    for coefficient in [1] + list(range(2, 10, 2)):
-        sin_vectors = [np.sin(x[:time_frames, i] * coefficient) for i in range(x.shape[1])]
-        column_list += sin_vectors
-        for subset in itertools.combinations(sin_vectors, 2):
-            column_list.append(subset[0] * subset[1])
+    for subset in itertools.combinations(x_vectors, 2):
+        column_list.append(subset[0] / (1 + np.abs(subset[1])))
+        column_list.append(subset[1] / (1 + np.abs(subset[0])))
 
     theta = np.column_stack(column_list)
     return theta
@@ -157,7 +163,7 @@ def _single_node_sindy(x_dot_i, theta, candidate_lambda):
 
 
 def _optimum_sindy(x_dot, theta, candidate_lambdas):
-    cv_index = int(x_dot.shape[0] * (1 - CV_PERCENT))
+    cv_index = x_dot.shape[0] - CV_DAYS
     x_dot_train = x_dot[:cv_index]
     x_dot_cv = x_dot[cv_index:]
     theta_train = theta[:cv_index]
@@ -213,7 +219,7 @@ def _draw_time_series(
                 '%s_hat_sindy' % indicator_name,
             ]
         )
-        plt.subplots(figsize=(10, 10))
+        plt.subplots(figsize=(20, 10))
         ax = sns.lineplot(x='index', y='value', hue='variable', style='variable', data=melted_data_frame)
         node_instrument_id, node_name = node_labels[node_id].split('_')
         reshaped_name = arabic_reshaper.reshape(node_name)
@@ -223,12 +229,16 @@ def _draw_time_series(
         plt.close('all')
 
 
+def _mean_absolute_error(test_data, prediction_data):
+    return np.abs(test_data - prediction_data).mean()
+
+
 def _create_indicator_time_series(indicator, indicator_name, node_labels, candidate_lambdas_indicator):
     normalized_indicator, normalization_parameters = _normalize_x(indicator)
 
     entire_x_dot = _get_x_dot(normalized_indicator)
     entire_theta = _get_theta(normalized_indicator)
-    test_index = int((1 - TEST_PERCENT) * entire_x_dot.shape[0])
+    test_index = entire_x_dot.shape[0] - TEST_DAYS
     x_dot_train = entire_x_dot[:test_index]
     theta_train = entire_theta[:test_index]
 
@@ -249,6 +259,11 @@ def _create_indicator_time_series(indicator, indicator_name, node_labels, candid
         normalized_indicator_hat_lstsq[time_frame] = normalized_indicator_hat_lstsq[time_frame - 1] + x_dot_hat_lstsq
     indicator_hat_lstsq = _revert_x(normalized_indicator_hat_lstsq, normalization_parameters)
     indicator_hat_lstsq[:test_index] = np.nan  # to avoid drawing
+
+    print('MAE', _mean_absolute_error(
+        normalized_indicator_hat_lstsq[test_index:],
+        normalized_indicator[test_index:]
+    ))
 
     print('Creating SINDy predictions...')
     xi_sindy = _optimum_sindy(x_dot_train, theta_train, candidate_lambdas_indicator)
