@@ -10,6 +10,7 @@ import sys
 import warnings
 
 from bidi.algorithm import get_display
+from matplotlib import rc
 from matplotlib.backends import backend_gtk3
 
 from iran_stock import get_iran_stock_network
@@ -17,7 +18,6 @@ from settings import OUTPUT_DIR
 
 
 warnings.filterwarnings('ignore', module=backend_gtk3.__name__)
-sns.set()
 
 
 # Algorithm Settings
@@ -219,12 +219,19 @@ def _draw_time_series(
                 '%s_hat_sindy' % indicator_name,
             ]
         )
+        rc('font', weight=600)
         plt.subplots(figsize=(20, 10))
-        ax = sns.lineplot(x='index', y='value', hue='variable', style='variable', data=melted_data_frame)
+        ax = sns.lineplot(x='index', y='value', hue='variable', style='variable', data=melted_data_frame, linewidth=4)
         node_instrument_id, node_name = node_labels[node_id].split('_')
         reshaped_name = arabic_reshaper.reshape(node_name)
         name_display = get_display(reshaped_name)
-        ax.set(xlabel='Days', ylabel=indicator_name, title=name_display)
+        ax.set_title(name_display, fontsize=28, fontweight=500)
+        x_display = get_display(arabic_reshaper.reshape('روزها'))
+        ax.set_xlabel(x_display, fontsize=20, fontweight=500)
+        ax.set_ylabel(indicator_name, fontsize=20, fontweight=500)
+        for axis in ['top', 'bottom', 'left', 'right']:
+            ax.spines[axis].set_linewidth(3)
+        ax.tick_params(width=3, length=10, labelsize=16)
         plt.savefig(os.path.join(OUTPUT_DIR, 'node_%d_%s_%s.png' % (node_id, node_instrument_id, indicator_name)))
         plt.close('all')
 
