@@ -21,9 +21,9 @@ warnings.filterwarnings('ignore', module=backend_gtk3.__name__)
 
 
 # Algorithm Settings
-RSI_PERIOD = 14
-CV_DAYS = 23
-TEST_DAYS = 38
+RSI_PERIOD = 7
+CV_DAYS = 14
+TEST_DAYS = 21
 FOURIER_HARMONICS = 10
 SINDY_ITERATIONS = 10
 CANDIDATE_LAMBDAS_RSI = [10 ** i for i in range(-9, -1)]  # empirical
@@ -206,7 +206,7 @@ def _draw_time_series(
             'index': np.arange(indicator.shape[0]),
             indicator_name: indicator[:, node_id],
             '%s_hat_fourier' % indicator_name: indicator_hat_fourier[:, node_id],
-            '%s_hat_lstsq' % indicator_name: indicator_hat_lstsq[:, node_id],
+            # '%s_hat_lstsq' % indicator_name: indicator_hat_lstsq[:, node_id],
             '%s_hat_sindy' % indicator_name: indicator_hat_sindy[:, node_id],
         })
         melted_data_frame = pd.melt(
@@ -215,7 +215,7 @@ def _draw_time_series(
             value_vars=[
                 indicator_name,
                 '%s_hat_fourier' % indicator_name,
-                '%s_hat_lstsq' % indicator_name,
+                # '%s_hat_lstsq' % indicator_name,
                 '%s_hat_sindy' % indicator_name,
             ]
         )
