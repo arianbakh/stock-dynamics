@@ -219,13 +219,13 @@ def _draw_distribution(data, x_label, y_label, title, file_name):
 
 
 def _better_label(complete_node_label):
-    return get_display(arabic_reshaper.reshape(complete_node_label.replace('_', '-').split('-')[-1]))
+    return complete_node_label.replace('_', '-').split('-')[-1]
 
 
 def _save_table(data1, data2, labels, table_name):
     with open(os.path.join(OUTPUT_DIR, 'table_%s.txt' % table_name), 'w') as table_file:
         for i in range(len(data1)):
-            table_file.write('%s & %.2f & %.2f \\\\\n' % (
+            table_file.write('%s & \\lr{%.2f} & \\lr{%.2f} \\\\\n' % (
                 _better_label(labels[i]),
                 data1[i],
                 data2[i]
