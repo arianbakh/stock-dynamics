@@ -14,7 +14,7 @@ from matplotlib import rc
 from matplotlib.backends import backend_gtk3
 
 from iran_stock import get_iran_stock_network
-from settings import OUTPUT_DIR
+from settings import OUTPUT_DIR, XI_PATH
 
 
 warnings.filterwarnings('ignore', module=backend_gtk3.__name__)
@@ -194,45 +194,107 @@ def _optimum_sindy(x_dot, theta, candidate_lambdas):
     return xi
 
 
+def thresholding_alg(y, lag, threshold, influence):
+    """
+    slightly modified the code from:
+    https://stackoverflow.com/questions/22583391/peak-signal-detection-in-realtime-timeseries-data/43512887#43512887
+    """
+    signals = np.zeros(len(y))
+    filtered_y = np.array(y)
+    avg_filter = np.zeros(len(y))
+    std_filter = np.zeros(len(y))
+    avg_filter[lag - 1] = np.mean(y[0:lag])
+    std_filter[lag - 1] = np.std(y[0:lag])
+    for i in range(lag, len(y)):
+        if abs(y[i] - avg_filter[i - 1]) > threshold * std_filter[i - 1]:
+            if y[i] > avg_filter[i - 1]:
+                signals[i] = 1
+            else:
+                signals[i] = -1
+
+            filtered_y[i] = influence * y[i] + (1 - influence) * filtered_y[i - 1]
+            avg_filter[i] = np.mean(filtered_y[(i - lag + 1):i + 1])
+            std_filter[i] = np.std(filtered_y[(i - lag + 1):i + 1])
+        else:
+            signals[i] = 0
+            filtered_y[i] = y[i]
+            avg_filter[i] = np.mean(filtered_y[(i - lag + 1):i + 1])
+            std_filter[i] = np.std(filtered_y[(i - lag + 1):i + 1])
+
+    return signals
+
+
 def _draw_time_series(
         indicator,
         indicator_name,
         indicator_hat_fourier,
         indicator_hat_lstsq,
         indicator_hat_sindy,
-        node_labels):
+        node_labels,
+        test_index):
     for node_id in range(indicator.shape[1]):
+        # Time Series plot
         data_frame = pd.DataFrame({
             'index': np.arange(indicator.shape[0]),
             indicator_name: indicator[:, node_id],
-            '%s_hat_fourier' % indicator_name: indicator_hat_fourier[:, node_id],
-            # '%s_hat_lstsq' % indicator_name: indicator_hat_lstsq[:, node_id],
-            '%s_hat_sindy' % indicator_name: indicator_hat_sindy[:, node_id],
+            'Fourier': indicator_hat_fourier[:, node_id],
+            # 'Least_Squares': indicator_hat_lstsq[:, node_id],
+            'SINDy': indicator_hat_sindy[:, node_id],
         })
         melted_data_frame = pd.melt(
             data_frame,
             id_vars=['index'],
             value_vars=[
                 indicator_name,
-                '%s_hat_fourier' % indicator_name,
-                # '%s_hat_lstsq' % indicator_name,
-                '%s_hat_sindy' % indicator_name,
+                'Fourier',
+                # 'Least-Squares',
+                'SINDy',
             ]
         )
         rc('font', weight=600)
         plt.subplots(figsize=(20, 10))
         ax = sns.lineplot(x='index', y='value', hue='variable', style='variable', data=melted_data_frame, linewidth=4)
         node_instrument_id, node_name = node_labels[node_id].split('_')
-        reshaped_name = arabic_reshaper.reshape(node_name)
-        name_display = get_display(reshaped_name)
-        ax.set_title(name_display, fontsize=28, fontweight=500)
-        x_display = get_display(arabic_reshaper.reshape('روزها'))
-        ax.set_xlabel(x_display, fontsize=20, fontweight=500)
+        ax.set_title(get_display(arabic_reshaper.reshape(node_name)), fontsize=28, fontweight=500)
+        ax.set_xlabel(get_display(arabic_reshaper.reshape('روزها')), fontsize=20, fontweight=500)
         ax.set_ylabel(indicator_name, fontsize=20, fontweight=500)
         for axis in ['top', 'bottom', 'left', 'right']:
             ax.spines[axis].set_linewidth(3)
         ax.tick_params(width=3, length=10, labelsize=16)
         plt.savefig(os.path.join(OUTPUT_DIR, 'node_%d_%s_%s.png' % (node_id, node_instrument_id, indicator_name)))
+        plt.close('all')
+
+        # Signal Plot
+        lag = 5
+        threshold = 1
+        influence = 1
+        indicator_signal = thresholding_alg(indicator[:, node_id], lag, threshold, influence)[test_index:]
+        indicator_hat_sindy_signal = \
+            thresholding_alg(indicator_hat_sindy[:, node_id], lag, threshold, influence)[test_index:]
+        data_frame = pd.DataFrame({
+            'index': np.arange(len(indicator_signal)),
+            '%s' % indicator_name + get_display(arabic_reshaper.reshape('قله‌های')): indicator_signal,
+            'SINDy' + get_display(arabic_reshaper.reshape('قله‌های')): indicator_hat_sindy_signal,
+        })
+        melted_data_frame = pd.melt(
+            data_frame,
+            id_vars=['index'],
+            value_vars=[
+                '%s' % indicator_name + get_display(arabic_reshaper.reshape('قله‌های')),
+                'SINDy' + get_display(arabic_reshaper.reshape('قله‌های')),
+            ]
+        )
+        rc('font', weight=600)
+        plt.subplots(figsize=(20, 10))
+        ax = sns.lineplot(x='index', y='value', hue='variable', style='variable', data=melted_data_frame, linewidth=4)
+        node_instrument_id, node_name = node_labels[node_id].split('_')
+        ax.set_title(get_display(arabic_reshaper.reshape(node_name)), fontsize=28, fontweight=500)
+        ax.set_xlabel(get_display(arabic_reshaper.reshape('روزهای پیش‌بینی شده')), fontsize=20, fontweight=500)
+        ax.set_ylabel(get_display(arabic_reshaper.reshape('قله‌های تشخیص داده شده')), fontsize=20, fontweight=500)
+        for axis in ['top', 'bottom', 'left', 'right']:
+            ax.spines[axis].set_linewidth(3)
+        ax.tick_params(width=3, length=10, labelsize=16)
+        plt.savefig(os.path.join(OUTPUT_DIR, 'node_%d_%s_%s_peaks.png' % (node_id, node_instrument_id, indicator_name)))
         plt.close('all')
 
 
@@ -273,7 +335,11 @@ def _create_indicator_time_series(indicator, indicator_name, node_labels, candid
     ))
 
     print('Creating SINDy predictions...')
-    xi_sindy = _optimum_sindy(x_dot_train, theta_train, candidate_lambdas_indicator)
+    if os.path.exists(XI_PATH):
+        xi_sindy = np.load(XI_PATH, allow_pickle=True)
+    else:
+        xi_sindy = _optimum_sindy(x_dot_train, theta_train, candidate_lambdas_indicator)
+        np.save(XI_PATH, xi_sindy)
 
     normalized_indicator_hat_sindy = np.copy(normalized_indicator)
     for time_frame in range(test_index, indicator.shape[0]):
@@ -290,7 +356,8 @@ def _create_indicator_time_series(indicator, indicator_name, node_labels, candid
         indicator_hat_fourier,
         indicator_hat_lstsq,
         indicator_hat_sindy,
-        node_labels
+        node_labels,
+        test_index
     )
 
 

@@ -15,14 +15,12 @@ from matplotlib.backends import backend_gtk3
 from scipy.integrate import RK45
 
 from iran_stock import get_iran_stock_network
-from settings import OUTPUT_DIR
-
+from settings import OUTPUT_DIR, XI_PATH
 
 warnings.filterwarnings('ignore', module=backend_gtk3.__name__)
 
 
 # File Settings
-XI_PATH = os.path.join(OUTPUT_DIR, 'xi.npy')
 LIBRARY_PATH = os.path.join(OUTPUT_DIR, 'library.npy')
 
 
