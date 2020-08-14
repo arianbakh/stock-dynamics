@@ -222,13 +222,14 @@ def _better_label(complete_node_label):
     return complete_node_label.replace('_', '-').split('-')[-1]
 
 
-def _save_table(data1, data2, labels, table_name):
+def _save_table(data1, data2, data3, labels, table_name):
     with open(os.path.join(OUTPUT_DIR, 'table_%s.txt' % table_name), 'w') as table_file:
         for i in range(len(data1)):
-            table_file.write('%s & \\lr{%.2f} & \\lr{%.2f} \\\\\n' % (
+            table_file.write('%s & \\lr{%.2f} & \\lr{%.2f} & \\lr{%.2f} \\\\\n' % (
                 _better_label(labels[i]),
                 data1[i],
-                data2[i]
+                data2[i],
+                data3[i]
             ))
 
 
@@ -243,12 +244,17 @@ def run():
     g2 = _calculate_g(predicted_rsi[-TEST_DAYS:])
     impact2 = _calculate_impact(g2)
     stability2 = _calculate_stability(g2)
+    g3 = _calculate_g(rsi[-TEST_DAYS:])
+    impact3 = _calculate_impact(g3)
+    stability3 = _calculate_stability(g3)
     _draw_distribution(impact1, 'تأثیر', 'چگالی', 'مقدار تأثیر قبل از پیش‌بینی', 'impact_before_prediction.png')
     _draw_distribution(impact2, 'تأثیر', 'چگالی', 'مقدار تأثیر پس از پیش‌بینی', 'impact_after_prediction.png')
+    _draw_distribution(impact3, 'تأثیر', 'چگالی', 'مقدار تأثیر پس از پیش‌بینی', 'impact_after_prediction_real.png')
     _draw_distribution(stability1, 'ثبات', 'چگالی', 'مقدار ثبات قبل از پیش‌بینی', 'stability_before_prediction.png')
     _draw_distribution(stability2, 'ثبات', 'چگالی', 'مقدار ثبات پس از پیش‌بینی', 'stability_after_prediction.png')
-    _save_table(impact1, impact2, node_labels, 'impact')
-    _save_table(stability1, stability2, node_labels, 'stability')
+    _draw_distribution(stability3, 'ثبات', 'چگالی', 'مقدار ثبات پس از پیش‌بینی', 'stability_after_prediction_real.png')
+    _save_table(impact1, impact2, impact3, node_labels, 'impact')
+    _save_table(stability1, stability2, stability3, node_labels, 'stability')
 
 
 if __name__ == '__main__':
